@@ -3,16 +3,12 @@ import os
 from datetime import datetime
 from threading import Lock
 
-# File to store job data persistently
 JOBS_FILE = "jobs.json"
 DLQ_FILE = "dlq.json"
-
-# Thread-safe file access
 file_lock = Lock()
 
 
 def _load_file(path):
-    """Internal helper to safely load JSON data from file."""
     if not os.path.exists(path):
         return []
     with open(path, "r") as f:
@@ -23,13 +19,11 @@ def _load_file(path):
 
 
 def _save_file(path, data):
-    """Internal helper to safely write JSON data to file."""
     with open(path, "w") as f:
         json.dump(data, f, indent=4)
 
 
 def add_job(job_data):
-    """Add a new job to persistent storage."""
     with file_lock:
         jobs = _load_file(JOBS_FILE)
         now = datetime.utcnow().isoformat()
@@ -44,7 +38,6 @@ def add_job(job_data):
 
 
 def get_jobs(state=None):
-    """Fetch jobs filtered by state (optional)."""
     with file_lock:
         jobs = _load_file(JOBS_FILE)
         if state:
@@ -53,7 +46,6 @@ def get_jobs(state=None):
 
 
 def update_job_state(job_id, new_state):
-    """Update the state of a specific job."""
     with file_lock:
         jobs = _load_file(JOBS_FILE)
         for job in jobs:
@@ -64,7 +56,6 @@ def update_job_state(job_id, new_state):
 
 
 def get_status_summary():
-    """Return a summary count of job states."""
     jobs = _load_file(JOBS_FILE)
     summary = {}
     for j in jobs:
@@ -73,7 +64,6 @@ def get_status_summary():
 
 
 def move_to_dlq(job):
-    """Move failed job to Dead Letter Queue (DLQ)."""
     with file_lock:
         dlq = _load_file(DLQ_FILE)
         job["state"] = "dead"

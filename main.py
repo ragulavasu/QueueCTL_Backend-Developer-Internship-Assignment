@@ -11,8 +11,12 @@ def enqueue_job(job_json):
         print("Invalid job JSON format.")
         return
 
+    if "id" not in job_data or "command" not in job_data:
+        print("Job must contain 'id' and 'command' fields.")
+        return
+
     job_manager.add_job(job_data)
-    print(f"Job '{job_data['id']}' enqueued successfully.")
+    print(f"Job '{job_data['id']}' added to the queue.")
 
 
 def list_jobs(state=None):
@@ -22,7 +26,7 @@ def list_jobs(state=None):
         return
     print(f"Jobs (state: {state or 'all'}):")
     for j in jobs:
-        print(f"- {j['id']} | {j['command']} | {j['state']}")
+        print(f"- {j['id']} | {j['command']} | {j['state']} | attempts={j['attempts']}")
 
 
 def status_summary():
@@ -50,18 +54,14 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    # enqueue
     enqueue_parser = subparsers.add_parser("enqueue", help="Add a new job to the queue")
     enqueue_parser.add_argument("job_json", help="Job JSON string")
 
-    # list
     list_parser = subparsers.add_parser("list", help="List jobs by state")
     list_parser.add_argument("--state", help="Filter by state", required=False)
 
-    # status
     subparsers.add_parser("status", help="Show summary of all job states")
 
-    # worker start
     worker_parser = subparsers.add_parser("worker", help="Manage workers")
     worker_parser.add_argument("action", choices=["start", "stop"])
     worker_parser.add_argument("--count", type=int, default=1, help="Number of workers")

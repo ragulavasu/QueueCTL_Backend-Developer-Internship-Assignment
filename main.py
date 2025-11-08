@@ -1,6 +1,7 @@
 import argparse
 import json
 import job_manager
+import worker_manager
 
 
 def enqueue_job(job_json):
@@ -34,9 +35,18 @@ def status_summary():
             print(f"  {s}: {c}")
 
 
+def start_worker(count):
+    print(f"Starting {count} worker(s)... Press Ctrl+C to stop.")
+    worker_manager.start_workers(count)
+
+
+def stop_worker():
+    worker_manager.stop_workers()
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="QueueCTL - Simple Background Job Queue System"
+        description="QueueCTL - Background Job Queue System"
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -51,6 +61,11 @@ def main():
     # status
     subparsers.add_parser("status", help="Show summary of all job states")
 
+    # worker start
+    worker_parser = subparsers.add_parser("worker", help="Manage workers")
+    worker_parser.add_argument("action", choices=["start", "stop"])
+    worker_parser.add_argument("--count", type=int, default=1, help="Number of workers")
+
     args = parser.parse_args()
 
     if args.command == "enqueue":
@@ -59,6 +74,11 @@ def main():
         list_jobs(args.state)
     elif args.command == "status":
         status_summary()
+    elif args.command == "worker":
+        if args.action == "start":
+            start_worker(args.count)
+        elif args.action == "stop":
+            stop_worker()
     else:
         parser.print_help()
 

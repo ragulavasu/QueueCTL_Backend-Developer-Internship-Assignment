@@ -1,50 +1,21 @@
 import argparse
 import json
-import os
-from datetime import datetime
+import job_manager
 
-JOBS_FILE = "jobs.json"
-
-# Basic storage functions (temporary, JSON-based)
-
-def load_jobs():
-    if not os.path.exists(JOBS_FILE):
-        return []
-    with open(JOBS_FILE, "r") as f:
-        try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            return []
-
-
-def save_jobs(jobs):
-    with open(JOBS_FILE, "w") as f:
-        json.dump(jobs, f, indent=4)
-
-
-# CLI command functions
 
 def enqueue_job(job_json):
     try:
-        job = json.loads(job_json)
-        job["state"] = "pending"
-        job["attempts"] = 0
-        job["created_at"] = datetime.utcnow().isoformat()
-        job["updated_at"] = job["created_at"]
+        job_data = json.loads(job_json)
     except json.JSONDecodeError:
         print("Invalid job JSON format.")
         return
 
-    jobs = load_jobs()
-    jobs.append(job)
-    save_jobs(jobs)
-    print(f"Job '{job['id']}' enqueued successfully.")
+    job_manager.add_job(job_data)
+    print(f"Job '{job_data['id']}' enqueued successfully.")
 
 
 def list_jobs(state=None):
-    jobs = load_jobs()
-    if state:
-        jobs = [j for j in jobs if j["state"] == state]
+    jobs = job_manager.get_jobs(state)
     if not jobs:
         print("No jobs found.")
         return
@@ -54,18 +25,14 @@ def list_jobs(state=None):
 
 
 def status_summary():
-    jobs = load_jobs()
-    summary = {}
-    for j in jobs:
-        summary[j["state"]] = summary.get(j["state"], 0) + 1
+    summary = job_manager.get_status_summary()
     print("Job Status Summary:")
-    for s, c in summary.items():
-        print(f"  {s}: {c}")
     if not summary:
         print("  No jobs found.")
+    else:
+        for s, c in summary.items():
+            print(f"  {s}: {c}")
 
-
-# CLI setup
 
 def main():
     parser = argparse.ArgumentParser(

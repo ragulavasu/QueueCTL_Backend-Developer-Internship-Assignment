@@ -6,6 +6,8 @@ from helpers import load_config, exponential_backoff, log, sleep_for_delay
 
 
 stop_flag = False
+active_workers = 0
+workers_lock = threading.Lock()
 
 
 def execute_job(job):
@@ -31,38 +33,59 @@ def handle_failed_job(job):
     max_retries = config.get("max_retries", 3)
     base = config.get("backoff_base", 2)
 
-    job["attempts"] += 1
+    new_attempts = job["attempts"] + 1
+    job_manager.update_job_attempts(job["id"], new_attempts)
+    job["attempts"] = new_attempts
 
     if job["attempts"] > max_retries:
         log(f"Job '{job['id']}' exceeded max retries. Moving to DLQ.")
         job_manager.move_to_dlq(job)
-        job_manager.update_job_state(job["id"], "dead")
         return
 
+    job_manager.update_job_state(job["id"], "failed")
     delay = exponential_backoff(base, job["attempts"])
     sleep_for_delay(delay)
     log(f"Retrying job '{job['id']}' (attempt {job['attempts']}).")
-    execute_job(job)
+    job_manager.update_job_state(job["id"], "pending")
+    
+    all_jobs = job_manager.get_jobs()
+    updated_job = None
+    for j in all_jobs:
+        if j["id"] == job["id"]:
+            updated_job = j.copy()
+            break
+    
+    if updated_job:
+        execute_job(updated_job)
 
 
 def worker_loop(worker_id):
     """Worker thread loop that continuously fetches and executes jobs."""
-    global stop_flag
+    global stop_flag, active_workers
+    with workers_lock:
+        active_workers += 1
     log(f"Worker {worker_id} started.")
-    while not stop_flag:
-        pending_jobs = job_manager.get_jobs("pending")
-        if not pending_jobs:
-            time.sleep(1)
-            continue
-        job = pending_jobs[0]
-        job_manager.update_job_state(job["id"], "processing")
-        log(f"Worker {worker_id} is processing job '{job['id']}'.")
-        execute_job(job)
-    log(f"Worker {worker_id} stopped.")
+    
+    try:
+        while not stop_flag:
+            pending_jobs = job_manager.get_jobs("pending")
+            if not pending_jobs:
+                time.sleep(1)
+                continue
+            job = pending_jobs[0].copy()
+            job_manager.update_job_state(job["id"], "processing")
+            log(f"Worker {worker_id} is processing job '{job['id']}'.")
+            execute_job(job)
+    finally:
+        with workers_lock:
+            active_workers -= 1
+        log(f"Worker {worker_id} stopped.")
 
 
 def start_workers(count):
     """Start multiple worker threads."""
+    global stop_flag
+    stop_flag = False
     threads = []
     for i in range(count):
         t = threading.Thread(target=worker_loop, args=(i + 1,))
@@ -80,3 +103,9 @@ def stop_workers():
     global stop_flag
     stop_flag = True
     log("Stopping all workers...")
+
+
+def get_active_workers_count():
+    """Get the number of currently active workers."""
+    with workers_lock:
+        return active_workers

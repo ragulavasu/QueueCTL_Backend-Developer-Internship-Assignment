@@ -55,6 +55,16 @@ def update_job_state(job_id, new_state):
         _save_file(JOBS_FILE, jobs)
 
 
+def update_job_attempts(job_id, attempts):
+    with file_lock:
+        jobs = _load_file(JOBS_FILE)
+        for job in jobs:
+            if job["id"] == job_id:
+                job["attempts"] = attempts
+                job["updated_at"] = datetime.utcnow().isoformat()
+        _save_file(JOBS_FILE, jobs)
+
+
 def get_status_summary():
     jobs = _load_file(JOBS_FILE)
     summary = {}
@@ -65,8 +75,50 @@ def get_status_summary():
 
 def move_to_dlq(job):
     with file_lock:
+        jobs = _load_file(JOBS_FILE)
+        job_to_move = None
+        for j in jobs:
+            if j["id"] == job["id"]:
+                job_to_move = j.copy()
+                break
+        
+        if not job_to_move:
+            return
+        
+        jobs = [j for j in jobs if j["id"] != job["id"]]
+        _save_file(JOBS_FILE, jobs)
+        
         dlq = _load_file(DLQ_FILE)
-        job["state"] = "dead"
-        job["updated_at"] = datetime.utcnow().isoformat()
-        dlq.append(job)
+        job_to_move["state"] = "dead"
+        job_to_move["updated_at"] = datetime.utcnow().isoformat()
+        dlq.append(job_to_move)
         _save_file(DLQ_FILE, dlq)
+
+
+def get_dlq_jobs():
+    with file_lock:
+        return _load_file(DLQ_FILE)
+
+
+def retry_dlq_job(job_id):
+    with file_lock:
+        dlq = _load_file(DLQ_FILE)
+        job = None
+        for j in dlq:
+            if j["id"] == job_id:
+                job = j
+                break
+        
+        if not job:
+            return False
+        
+        dlq = [j for j in dlq if j["id"] != job_id]
+        _save_file(DLQ_FILE, dlq)
+        
+        jobs = _load_file(JOBS_FILE)
+        job["state"] = "pending"
+        job["attempts"] = 0
+        job["updated_at"] = datetime.utcnow().isoformat()
+        jobs.append(job)
+        _save_file(JOBS_FILE, jobs)
+        return True

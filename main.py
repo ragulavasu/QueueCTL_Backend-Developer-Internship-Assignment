@@ -4,21 +4,17 @@ import job_manager
 import worker_manager
 from helpers import set_config, get_config
 
-
 def enqueue_job(job_json):
     try:
         job_data = json.loads(job_json)
     except json.JSONDecodeError:
         print("Invalid job JSON format.")
         return
-
     if "id" not in job_data or "command" not in job_data:
         print("Job must contain 'id' and 'command' fields.")
         return
-
     job_manager.add_job(job_data)
     print(f"Job '{job_data['id']}' added to the queue.")
-
 
 def list_jobs(state=None):
     jobs = job_manager.get_jobs(state)
@@ -28,7 +24,6 @@ def list_jobs(state=None):
     print(f"Jobs (state: {state or 'all'}):")
     for j in jobs:
         print(f"- {j['id']} | {j['command']} | {j['state']} | attempts={j['attempts']}")
-
 
 def status_summary():
     summary = job_manager.get_status_summary()
@@ -41,15 +36,12 @@ def status_summary():
             print(f"  {s}: {c}")
         print(f"  Active Workers: {active_workers}")
 
-
 def start_worker(count):
     print(f"Starting {count} worker(s)... Press Ctrl+C to stop.")
     worker_manager.start_workers(count)
 
-
 def stop_worker():
     worker_manager.stop_workers()
-
 
 def dlq_list():
     dlq_jobs = job_manager.get_dlq_jobs()
@@ -60,20 +52,17 @@ def dlq_list():
     for j in dlq_jobs:
         print(f"- {j['id']} | {j['command']} | attempts={j['attempts']}")
 
-
 def dlq_retry(job_id):
     if job_manager.retry_dlq_job(job_id):
         print(f"Job '{job_id}' moved back to queue for retry.")
     else:
         print(f"Job '{job_id}' not found in Dead Letter Queue.")
 
-
 def config_set(key, value):
     if set_config(key, value):
         print(f"Configuration updated: {key} = {value}")
     else:
         print(f"Invalid configuration key: {key}")
-
 
 def config_get(key=None):
     if key:
@@ -88,11 +77,12 @@ def config_get(key=None):
         print(f"  max-retries: {config.get('max_retries', 3)}")
         print(f"  backoff-base: {config.get('backoff_base', 2)}")
 
+def reset_system():
+    job_manager.clear_all_jobs()
+    print("All jobs and DLQ cleared. System reset successfully.")
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="QueueCTL - Background Job Queue System"
-    )
+    parser = argparse.ArgumentParser(description="QueueCTL - Background Job Queue System")
     subparsers = parser.add_subparsers(dest="command")
 
     enqueue_parser = subparsers.add_parser("enqueue", help="Add a new job to the queue")
@@ -120,6 +110,8 @@ def main():
     config_set_parser.add_argument("value", help="Configuration value")
     config_subparsers.add_parser("get", help="Get configuration value(s)")
 
+    subparsers.add_parser("reset", help="Clear all jobs and DLQ data")
+
     args = parser.parse_args()
 
     if args.command == "enqueue":
@@ -143,9 +135,10 @@ def main():
             config_set(args.key, args.value)
         elif args.config_action == "get":
             config_get()
+    elif args.command == "reset":
+        reset_system()
     else:
         parser.print_help()
-
 
 if __name__ == "__main__":
     main()

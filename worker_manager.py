@@ -4,18 +4,14 @@ import time
 import job_manager
 from helpers import load_config, exponential_backoff, log, sleep_for_delay
 
-
-stop_flag = False
-active_workers = 0
+stop_flag = threading.Event()
 workers_lock = threading.Lock()
+active_workers = 0
 
 
 def execute_job(job):
-    """Run the given job's shell command."""
     try:
-        result = subprocess.run(
-            job["command"], shell=True, capture_output=True, text=True
-        )
+        result = subprocess.run(job["command"], shell=True, capture_output=True, text=True)
         if result.returncode == 0:
             log(f"Job '{job['id']}' completed successfully.")
             job_manager.update_job_state(job["id"], "completed")
@@ -28,7 +24,6 @@ def execute_job(job):
 
 
 def handle_failed_job(job):
-    """Handle job retry or move to DLQ."""
     config = load_config()
     max_retries = config.get("max_retries", 3)
     base = config.get("backoff_base", 2)
@@ -47,30 +42,29 @@ def handle_failed_job(job):
     sleep_for_delay(delay)
     log(f"Retrying job '{job['id']}' (attempt {job['attempts']}).")
     job_manager.update_job_state(job["id"], "pending")
-    
+
     all_jobs = job_manager.get_jobs()
     updated_job = None
     for j in all_jobs:
         if j["id"] == job["id"]:
             updated_job = j.copy()
             break
-    
-    if updated_job:
+
+    if updated_job and not stop_flag.is_set():
         execute_job(updated_job)
 
 
 def worker_loop(worker_id):
-    """Worker thread loop that continuously fetches and executes jobs."""
-    global stop_flag, active_workers
+    global active_workers
     with workers_lock:
         active_workers += 1
     log(f"Worker {worker_id} started.")
-    
+
     try:
-        while not stop_flag:
+        while not stop_flag.is_set():
             pending_jobs = job_manager.get_jobs("pending")
             if not pending_jobs:
-                time.sleep(1)
+                time.sleep(0.5)
                 continue
             job = pending_jobs[0].copy()
             job_manager.update_job_state(job["id"], "processing")
@@ -83,29 +77,31 @@ def worker_loop(worker_id):
 
 
 def start_workers(count):
-    """Start multiple worker threads."""
     global stop_flag
-    stop_flag = False
+    stop_flag.clear()
     threads = []
+
     for i in range(count):
-        t = threading.Thread(target=worker_loop, args=(i + 1,))
+        t = threading.Thread(target=worker_loop, args=(i + 1,), daemon=True)
         t.start()
         threads.append(t)
+
     try:
+        while any(t.is_alive() for t in threads):
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        log("KeyboardInterrupt detected — stopping workers...")
+        stop_workers()
         for t in threads:
             t.join()
-    except KeyboardInterrupt:
-        stop_workers()
+        log("All workers stopped.")
 
 
 def stop_workers():
-    """Gracefully stop all workers."""
-    global stop_flag
-    stop_flag = True
+    stop_flag.set()
     log("Stopping all workers...")
 
 
 def get_active_workers_count():
-    """Get the number of currently active workers."""
     with workers_lock:
         return active_workers

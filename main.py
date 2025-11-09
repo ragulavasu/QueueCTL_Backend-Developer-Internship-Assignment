@@ -2,6 +2,7 @@ import argparse
 import json
 import job_manager
 import worker_manager
+from helpers import set_config, get_config
 
 
 def enqueue_job(job_json):
@@ -31,12 +32,14 @@ def list_jobs(state=None):
 
 def status_summary():
     summary = job_manager.get_status_summary()
+    active_workers = worker_manager.get_active_workers_count()
     print("Job Status Summary:")
-    if not summary:
+    if not summary and active_workers == 0:
         print("  No jobs found.")
     else:
         for s, c in summary.items():
             print(f"  {s}: {c}")
+        print(f"  Active Workers: {active_workers}")
 
 
 def start_worker(count):
@@ -46,6 +49,44 @@ def start_worker(count):
 
 def stop_worker():
     worker_manager.stop_workers()
+
+
+def dlq_list():
+    dlq_jobs = job_manager.get_dlq_jobs()
+    if not dlq_jobs:
+        print("Dead Letter Queue is empty.")
+        return
+    print("Dead Letter Queue:")
+    for j in dlq_jobs:
+        print(f"- {j['id']} | {j['command']} | attempts={j['attempts']}")
+
+
+def dlq_retry(job_id):
+    if job_manager.retry_dlq_job(job_id):
+        print(f"Job '{job_id}' moved back to queue for retry.")
+    else:
+        print(f"Job '{job_id}' not found in Dead Letter Queue.")
+
+
+def config_set(key, value):
+    if set_config(key, value):
+        print(f"Configuration updated: {key} = {value}")
+    else:
+        print(f"Invalid configuration key: {key}")
+
+
+def config_get(key=None):
+    if key:
+        value = get_config(key)
+        if value is not None:
+            print(f"{key}: {value}")
+        else:
+            print(f"Invalid configuration key: {key}")
+    else:
+        config = get_config()
+        print("Current Configuration:")
+        print(f"  max-retries: {config.get('max_retries', 3)}")
+        print(f"  backoff-base: {config.get('backoff_base', 2)}")
 
 
 def main():
@@ -66,6 +107,19 @@ def main():
     worker_parser.add_argument("action", choices=["start", "stop"])
     worker_parser.add_argument("--count", type=int, default=1, help="Number of workers")
 
+    dlq_parser = subparsers.add_parser("dlq", help="Dead Letter Queue operations")
+    dlq_subparsers = dlq_parser.add_subparsers(dest="dlq_action")
+    dlq_subparsers.add_parser("list", help="List all jobs in DLQ")
+    dlq_retry_parser = dlq_subparsers.add_parser("retry", help="Retry a job from DLQ")
+    dlq_retry_parser.add_argument("job_id", help="Job ID to retry")
+
+    config_parser = subparsers.add_parser("config", help="Manage configuration")
+    config_subparsers = config_parser.add_subparsers(dest="config_action")
+    config_set_parser = config_subparsers.add_parser("set", help="Set configuration value")
+    config_set_parser.add_argument("key", help="Configuration key (max-retries or backoff-base)")
+    config_set_parser.add_argument("value", help="Configuration value")
+    config_subparsers.add_parser("get", help="Get configuration value(s)")
+
     args = parser.parse_args()
 
     if args.command == "enqueue":
@@ -79,6 +133,16 @@ def main():
             start_worker(args.count)
         elif args.action == "stop":
             stop_worker()
+    elif args.command == "dlq":
+        if args.dlq_action == "list":
+            dlq_list()
+        elif args.dlq_action == "retry":
+            dlq_retry(args.job_id)
+    elif args.command == "config":
+        if args.config_action == "set":
+            config_set(args.key, args.value)
+        elif args.config_action == "get":
+            config_get()
     else:
         parser.print_help()
 

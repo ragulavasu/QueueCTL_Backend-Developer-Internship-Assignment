@@ -8,6 +8,13 @@ A simple job queue system built with Python. You can add jobs to a queue and wor
 2. [Usage Examples](#2-usage-examples)
 3. [Architecture Overview](#3-architecture-overview)
 4. [Testing Instructions](#4-testing-instructions)
+5. [Demo Video](#5-demo-video)
+
+---
+
+## 5. Demo Video
+
+Watch the demo video to see QueueCTL in action: [Demo Video Link](https://drive.google.com/file/d/1LjvGRFOpDAg3XvY6myNKqrVYdCicCML9/view?usp=sharing)
 
 ---
 
